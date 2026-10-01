@@ -1,11 +1,4 @@
-"""
-Training script.
-
-Usage:
-    python train.py --model baseline --epochs 15
-    python train.py --model resnet18 --epochs 10 --lr 0.0003
-    python train.py --model efficientnet_b0 --epochs 10 --lr 0.0003
-"""
+"""Train the two-stage ResNet50 MRI classifier."""
 
 import argparse
 import os
@@ -17,13 +10,20 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from data_loader import get_dataloaders
-from model import build_model
+from model import build_resnet50
 
 OUTPUT_DIR = "outputs"
 
 
-def run_epoch(model, loader, criterion, optimizer, device, train: bool):
-    model.train() if train else model.eval()
+def run_epoch(model, loader, criterion, optimizer, device, train: bool,
+              freeze_backbone: bool = False):
+    if train:
+        model.train()
+        if freeze_backbone:
+            model.eval()
+            model.fc.train()
+    else:
+        model.eval()
     total_loss, correct, total = 0.0, 0, 0
 
     context = torch.enable_grad() if train else torch.no_grad()
@@ -51,13 +51,10 @@ def run_epoch(model, loader, criterion, optimizer, device, train: bool):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="resnet18",
-                         choices=["baseline", "resnet18", "resnet50", "efficientnet_b0"])
     parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--head_epochs", type=int, default=5,
+                        help="ResNet50 epochs with only the classifier head trainable")
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--freeze_backbone", action="store_true",
-                         help="Only train the final layer (faster, pretrained models only)")
     parser.add_argument("--data_dir", default="data")
     args = parser.parse_args()
 
@@ -70,46 +67,64 @@ def main():
     )
     print(f"Classes: {class_names}")
 
-    model = build_model(args.model, num_classes=len(class_names),
-                         freeze_backbone=args.freeze_backbone).to(device)
-
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr
-    )
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2
-    )
+    model = build_resnet50(num_classes=len(class_names)).to(device)
+    phases = [("head", args.head_epochs, 1e-3, True),
+              ("fine-tuning", args.epochs, 1e-5, False)]
 
     history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
     best_val_acc = 0.0
-    checkpoint_path = os.path.join(OUTPUT_DIR, f"{args.model}_best.pt")
+    checkpoint_path = os.path.join(OUTPUT_DIR, "resnet50_best.pt")
 
-    for epoch in range(1, args.epochs + 1):
-        start = time.time()
-        train_loss, train_acc = run_epoch(model, train_loader, criterion, optimizer, device, train=True)
-        val_loss, val_acc = run_epoch(model, val_loader, criterion, optimizer, device, train=False)
-        scheduler.step(val_loss)
+    total_epochs = sum(phase[1] for phase in phases)
+    epoch_number = 0
+    for phase_name, phase_epochs, learning_rate, freeze_backbone in phases:
+        for parameter in model.parameters():
+            parameter.requires_grad = not freeze_backbone
+        if freeze_backbone:
+            for parameter in model.fc.parameters():
+                parameter.requires_grad = True
 
-        history["train_loss"].append(train_loss)
-        history["train_acc"].append(train_acc)
-        history["val_loss"].append(val_loss)
-        history["val_acc"].append(val_acc)
+        optimizer = torch.optim.Adam(
+            filter(lambda parameter: parameter.requires_grad, model.parameters()),
+            lr=learning_rate,
+        )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=2
+        )
+        print(f"\nPhase: {phase_name} ({phase_epochs} epochs, lr={learning_rate:g})")
 
-        elapsed = time.time() - start
-        print(f"Epoch {epoch}/{args.epochs} ({elapsed:.0f}s) | "
-              f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
-              f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
+        for phase_epoch in range(1, phase_epochs + 1):
+            epoch_number += 1
+            start = time.time()
+            train_loss, train_acc = run_epoch(
+                model, train_loader, criterion, optimizer, device, train=True,
+                freeze_backbone=freeze_backbone,
+            )
+            val_loss, val_acc = run_epoch(
+                model, val_loader, criterion, optimizer, device, train=False,
+            )
+            scheduler.step(val_loss)
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            torch.save({
-                "model_state_dict": model.state_dict(),
-                "class_names": class_names,
-                "model_name": args.model,
-                "val_acc": val_acc,
-            }, checkpoint_path)
-            print(f"  -> saved new best checkpoint ({val_acc:.4f} val acc)")
+            history["train_loss"].append(train_loss)
+            history["train_acc"].append(train_acc)
+            history["val_loss"].append(val_loss)
+            history["val_acc"].append(val_acc)
+
+            elapsed = time.time() - start
+            print(f"Epoch {epoch_number}/{total_epochs} ({elapsed:.0f}s) | "
+                  f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
+                  f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
+
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                torch.save({
+                    "model_state_dict": model.state_dict(),
+                    "class_names": class_names,
+                    "model_name": "resnet50",
+                    "val_acc": val_acc,
+                }, checkpoint_path)
+                print(f"  -> saved new best checkpoint ({val_acc:.4f} val acc)")
 
     print(f"\nBest validation accuracy: {best_val_acc:.4f}")
     print(f"Checkpoint saved to {checkpoint_path}")
@@ -128,9 +143,9 @@ def main():
     axes[1].set_xlabel("Epoch")
     axes[1].legend()
 
-    fig.suptitle(f"Training curves: {args.model}")
+    fig.suptitle("Training curves: ResNet50")
     fig.tight_layout()
-    curves_path = os.path.join(OUTPUT_DIR, f"{args.model}_curves.png")
+    curves_path = os.path.join(OUTPUT_DIR, "resnet50_curves.png")
     fig.savefig(curves_path, dpi=150)
     print(f"Training curves saved to {curves_path}")
 

@@ -1,0 +1,182 @@
+BRAIN TUMOR MRI CLASSIFICATION
+Project status and future work
+================================
+
+Purpose
+-------
+This file records the current implementation and the work still needed to run,
+validate, and report the brain MRI classifier project. The project is a research
+and learning prototype, not a clinical diagnostic tool.
+
+Implemented so far
+------------------
+
+1. Dataset loading and preprocessing
+   - data_loader.py expects torchvision ImageFolder directories at:
+       data/Training/<class_name>/image-files
+       data/Testing/<class_name>/image-files
+   - Expected labels are glioma, meningioma, notumor, and pituitary. ImageFolder
+     assigns indices in sorted folder-name order; the returned class_names list
+     is used by the checkpoint and evaluation reports.
+   - ImageFolder's default PIL loader converts images to RGB, so grayscale MRI
+     files reach the network as three channels.
+   - Images are resized to 224 x 224 and normalized with ImageNet means
+     [0.485, 0.456, 0.406] and standard deviations [0.229, 0.224, 0.225].
+   - Training transforms include random horizontal flip and rotation up to
+     10 degrees. ColorJitter was removed so the augmentation matches the stated
+     project specification. Validation and test data do not use augmentation.
+   - Training/ is divided into training and validation subsets with a 15% split
+     and a fixed split generator seed of 42. Testing/ remains separate for the
+     final held-out evaluation.
+   - get_dataloaders accepts augment_train=False. The hybrid SVM workflow uses
+     this option so its training features are extracted from deterministic,
+     non-augmented images.
+   - Class counts for the train and validation subsets are printed when loaders
+     are created.
+
+2. Models
+   - model.py now exposes only build_resnet50; BaselineCNN, ResNet18, and
+     EfficientNet-B0 implementations and selection paths have been removed.
+   - ResNet50 training uses torchvision ResNet50_Weights.DEFAULT and replaces
+     the original fully connected layer with a four-class linear classifier.
+   - build_resnet50 accepts pretrained=False so checkpoint consumers can
+     construct the architecture without downloading ImageNet weights first.
+     Training uses pretrained weights by default.
+
+3. Training
+   - train.py supports only ResNet50 and always runs two phases:
+       Phase 1: train only model.fc for --head_epochs epochs (default 5),
+                using Adam at 1e-3. The backbone is held in evaluation mode so
+                its batch-normalization running statistics do not change.
+       Phase 2: unfreeze the full network for --epochs epochs (default 10),
+                using Adam at 1e-5.
+   - Both phases use CrossEntropyLoss. Train/validation loss and accuracy are
+     printed each epoch, and a ReduceLROnPlateau scheduler monitors validation
+     loss within each phase.
+   - The best checkpoint is selected by validation accuracy and saved as
+     outputs/resnet50_best.pt. Training curves are saved as
+     outputs/resnet50_curves.png.
+   - Example full default ResNet50 run:
+      python train.py
+     This runs 5 head-only epochs followed by 10 fine-tuning epochs.
+   - Example shorter run:
+      python train.py --head_epochs 1 --epochs 1
+
+4. Evaluation
+   - evaluate.py loads the selected checkpoint and evaluates the separate
+     Testing/ set.
+   - It prints accuracy, weighted precision/recall/F1, and a per-class
+     classification report including precision, recall, and F1. Per-class
+     recall for glioma, meningioma, and pituitary should receive particular
+     attention when discussing tumor misses.
+   - A confusion-matrix image is saved under outputs/.
+
+5. ResNet50 feature + SVM comparison
+   - hybrid_svm.py requires a trained ResNet50 checkpoint.
+   - The script first evaluates that checkpoint's softmax classifier on the
+     held-out test images. It then replaces the classifier head with Identity
+     and extracts 2048-dimensional ResNet50 features.
+   - Features from the non-augmented 85% training subset are used to fit an
+     sklearn pipeline containing StandardScaler followed by an RBF-kernel SVC.
+     The test set is used only for reporting, not fitting the scaler or SVM.
+   - It reports both classifiers on the same test labels, saves confusion
+     matrices for each, and writes the fitted SVM pipeline to
+     outputs/resnet50_svm.joblib.
+   - Command:
+       python hybrid_svm.py --checkpoint outputs/resnet50_best.pt
+
+6. Grad-CAM
+   - grad_cam.py loads a ResNet50 checkpoint and generates a Grad-CAM overlay
+     for one image using model.layer4[-1] as the target convolutional block.
+   - The default target is the model's predicted class. A class can instead be
+     chosen by name or numeric index with --target_class.
+   - Default output is outputs/gradcam.png. Example:
+       python grad_cam.py --checkpoint outputs/resnet50_best.pt --image data/Testing/glioma/example.jpg
+   - A heatmap is qualitative only; it does not establish that the network
+     learned clinically valid evidence or localized a tumor correctly.
+
+Verification performed
+---------------------
+- python -m py_compile train.py data_loader.py model.py evaluate.py
+  hybrid_svm.py grad_cam.py completed with exit code 0.
+- python train.py --help, python evaluate.py --help, python hybrid_svm.py --help,
+  and python grad_cam.py --help were attempted, but each stopped during import
+  because matplotlib is not installed in the active environment. CLI argument
+  output is therefore not yet verified.
+- The local data/Training and data/Testing dataset folders were not present at
+  inspection time. No model training, checkpoint loading, test evaluation,
+  SVM fitting, Grad-CAM generation, or GPU behavior has been verified against
+  real MRI files.
+- No performance metrics have been measured. Do not report example or expected
+  accuracy values as project results.
+
+Next steps
+----------
+
+1. Put the Kaggle dataset in data/Training and data/Testing with the four class
+   folders under each split. Confirm folder names and file counts; ImageFolder
+   class ordering must be consistent between Training/ and Testing/.
+
+2. Install the packages from requirements.txt in the selected Python
+   environment. Confirm that PyTorch sees the intended GPU with:
+       python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+   If pretrained weights are not cached, training needs network access once to
+   download ResNet50_Weights.DEFAULT.
+
+3. Complete the canceled CLI smoke test:
+       python train.py --help
+       python evaluate.py --help
+       python hybrid_svm.py --help
+       python grad_cam.py --help
+   Then check the data loader on the real dataset before a full run.
+
+4. Run a short end-to-end training check first:
+      python train.py --head_epochs 1 --epochs 1
+   Confirm that a checkpoint and curve image appear in outputs/. Then run the
+   intended training schedule, for example:
+      python train.py --head_epochs 5 --epochs 8
+
+5. Evaluate the best validation checkpoint on Testing/:
+      python evaluate.py --checkpoint outputs/resnet50_best.pt
+   Record the per-class recall and confusion matrix, not only overall accuracy.
+
+6. Run the direct classifier comparison and inspect the reports and plots:
+       python hybrid_svm.py --checkpoint outputs/resnet50_best.pt
+   Confirm the SVM scaler is fitted only on training features and both methods
+   use exactly the same held-out test samples.
+
+7. Generate Grad-CAM overlays for several correct and incorrect predictions,
+   including examples from each class. Inspect the source image alongside each
+   overlay; do not interpret a visually plausible heatmap as proof of model
+   validity.
+
+8. For a defensible final report, record the dataset version, class counts,
+   split procedure, hardware, training settings, per-class precision/recall/F1,
+   and confusion matrices. Compare softmax and SVM on the same test set.
+
+Known limitations and useful future improvements
+------------------------------------------------
+- The dataset has no patient IDs, and near-duplicate images may occur across
+  Training/ and Testing/. Test results may be optimistic because related images
+  can appear on both sides of the split. Deduplicate images where feasible and
+  seek patient-level or external-site validation if suitable data becomes
+  available.
+- The current validation split is image-level. It is reproducible in its
+  membership but does not prevent patient or near-duplicate leakage.
+- Python/model initialization and DataLoader shuffling are not fully seeded.
+  Add a documented global seed procedure if exact run reproducibility is needed.
+- There is no early stopping; the best checkpoint is saved, but training always
+  continues for the configured number of epochs.
+- Training history is plotted but not currently saved as a structured CSV/JSON
+  record. Persist metrics and configuration if runs need systematic comparison.
+- Class imbalance is printed but is not currently corrected with class weights
+  or a sampler. Review per-class recall before deciding whether balancing is
+  warranted.
+- The SVM is fit to features from the best softmax checkpoint. This is a
+  practical hybrid comparison, but the representation itself was optimized
+  using the neural classifier's validation process, not a separate SVM-specific
+  model-selection procedure.
+- Grad-CAM currently handles one image per invocation and expects a ResNet50
+  checkpoint.
+- This is 2D slice classification and ignores 3D spatial context, scanner/site
+  variability, and radiologist review. It must not be used for diagnosis.

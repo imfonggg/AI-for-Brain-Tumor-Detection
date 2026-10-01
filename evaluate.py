@@ -2,7 +2,7 @@
 Evaluation script -- run this on the held-out Testing/ set after training.
 
 Usage:
-    python evaluate.py --model resnet18 --checkpoint outputs/resnet18_best.pt
+    python evaluate.py --checkpoint outputs/resnet50_best.pt
 """
 
 import argparse
@@ -15,15 +15,13 @@ from sklearn.metrics import (accuracy_score, classification_report,
                               confusion_matrix, precision_recall_fscore_support)
 
 from data_loader import get_dataloaders
-from model import build_model
+from model import build_resnet50
 
 OUTPUT_DIR = "outputs"
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="resnet18",
-                         choices=["baseline", "resnet18", "resnet50", "efficientnet_b0"])
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--data_dir", default="data")
     parser.add_argument("--batch_size", type=int, default=32)
@@ -38,7 +36,7 @@ def main():
     checkpoint = torch.load(args.checkpoint, map_location=device)
     class_names = checkpoint.get("class_names", class_names)
 
-    model = build_model(args.model, num_classes=len(class_names)).to(device)
+    model = build_resnet50(num_classes=len(class_names), pretrained=False).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
@@ -56,7 +54,7 @@ def main():
         all_labels, all_preds, average="weighted", zero_division=0
     )
 
-    print(f"\n=== Results for {args.model} on Testing/ set ===")
+    print("\n=== ResNet50 results on Testing/ set ===")
     print(f"Accuracy:  {acc:.4f}")
     print(f"Precision (weighted): {precision:.4f}")
     print(f"Recall (weighted):    {recall:.4f}")
@@ -73,9 +71,9 @@ def main():
                 xticklabels=class_names, yticklabels=class_names)
     plt.xlabel("Predicted")
     plt.ylabel("Actual")
-    plt.title(f"Confusion Matrix: {args.model}")
+    plt.title("Confusion Matrix: ResNet50")
     plt.tight_layout()
-    cm_path = os.path.join(OUTPUT_DIR, f"{args.model}_confusion_matrix.png")
+    cm_path = os.path.join(OUTPUT_DIR, "resnet50_confusion_matrix.png")
     plt.savefig(cm_path, dpi=150)
     print(f"\nConfusion matrix saved to {cm_path}")
 

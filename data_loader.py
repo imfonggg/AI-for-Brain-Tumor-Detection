@@ -30,7 +30,6 @@ def get_transforms(train: bool):
             transforms.Resize((IMG_SIZE, IMG_SIZE)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(10),
-            transforms.ColorJitter(brightness=0.15, contrast=0.15),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                   std=[0.229, 0.224, 0.225]),
@@ -60,7 +59,8 @@ def print_class_distribution(dataset, name="dataset"):
         print(f"  {idx_to_class[idx]:<12} {count:>5} ({pct:.1f}%)")
 
 
-def get_dataloaders(data_dir=DATA_DIR, batch_size=32, val_split=0.15, num_workers=2):
+def get_dataloaders(data_dir=DATA_DIR, batch_size=32, val_split=0.15, num_workers=2,
+                    augment_train=True):
     """Returns train_loader, val_loader, test_loader, class_names.
 
     Training/ is split into train/val. Testing/ is used only for final evaluation
@@ -75,7 +75,9 @@ def get_dataloaders(data_dir=DATA_DIR, batch_size=32, val_split=0.15, num_worker
             f"described in README.md before running this script."
         )
 
-    full_train = datasets.ImageFolder(train_dir, transform=get_transforms(train=True))
+    full_train = datasets.ImageFolder(
+        train_dir, transform=get_transforms(train=augment_train)
+    )
     class_names = full_train.classes
 
     n_val = int(len(full_train) * val_split)

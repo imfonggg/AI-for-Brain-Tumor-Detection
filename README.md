@@ -40,38 +40,50 @@ pip install -r requirements.txt
 
 ## 3. Train
 
-Baseline CNN (trained from scratch):
+Train the requested ResNet50 in two phases. The default is 5 classifier-head epochs
+followed by 10 fine-tuning epochs:
 ```bash
-python train.py --model baseline --epochs 15
+python train.py
 ```
 
-Transfer learning (pretrained ResNet18, recommended — better accuracy, faster to converge):
+To choose the number of epochs for each phase:
 ```bash
-python train.py --model resnet18 --epochs 10 --lr 0.0003
+python train.py --head_epochs 5 --epochs 8
 ```
+The head-only phase uses Adam at `1e-3`; fine-tuning unfreezes the full network
+and uses Adam at `1e-5`. Each epoch prints train/validation loss and accuracy,
+and the checkpoint with the best validation accuracy is kept.
 
-Try a second architecture for your "compare approaches" requirement:
-```bash
-python train.py --model efficientnet_b0 --epochs 10 --lr 0.0003
-```
-
-Each run saves a checkpoint to `outputs/<model>_best.pt` and a training curve plot to
-`outputs/<model>_curves.png`.
+Training saves `outputs/resnet50_best.pt` and `outputs/resnet50_curves.png`.
 
 ## 4. Evaluate
 
 ```bash
-python evaluate.py --model resnet18 --checkpoint outputs/resnet18_best.pt
+python evaluate.py --checkpoint outputs/resnet50_best.pt
 ```
 
 This prints accuracy, precision, recall, and F1 (overall and per-class), and saves a
-confusion matrix image to `outputs/<model>_confusion_matrix.png`.
+confusion matrix image to `outputs/resnet50_confusion_matrix.png`. Check per-class
+recall for glioma, meningioma, and pituitary rather than relying on accuracy alone.
 
-## 5. Compare models
+## 5. Compare the softmax and SVM heads
 
-Run `train.py` + `evaluate.py` for each architecture (baseline, resnet18, efficientnet_b0),
-then put the resulting metrics side by side in your report/slides. This directly satisfies
-the "compare model performance" and "explore different ML/DL approaches" guidelines.
+Run the hybrid comparison using the trained ResNet50 checkpoint:
+```bash
+python hybrid_svm.py --checkpoint outputs/resnet50_best.pt
+```
+It extracts 2048-dimensional ResNet50 features, fits `StandardScaler` + an RBF SVM
+on the training split, and reports both classifiers on the same held-out `Testing/`
+images. It saves both confusion matrices and `outputs/resnet50_svm.joblib`.
+
+## 6. Inspect a Grad-CAM heatmap
+
+```bash
+python grad_cam.py --checkpoint outputs/resnet50_best.pt --image data/Testing/glioma/example.jpg
+```
+The overlay is saved to `outputs/gradcam.png`. Grad-CAM is a qualitative inspection
+tool, not evidence that the model is clinically reliable or attending to the correct
+medical features.
 
 ## Project structure
 
@@ -79,9 +91,11 @@ the "compare model performance" and "explore different ML/DL approaches" guideli
 brain_tumor_project/
   data/                 <- put the dataset here (not included)
   data_loader.py         <- dataset class, transforms, train/val split
-  model.py                <- baseline CNN + pretrained model factory
+  model.py                <- pretrained ResNet50 construction
   train.py                <- training loop, saves checkpoints + curves
   evaluate.py              <- metrics: accuracy/precision/recall/F1/confusion matrix
+  hybrid_svm.py            <- compares softmax and ResNet50-feature SVM classifiers
+  grad_cam.py              <- creates a Grad-CAM image overlay
   requirements.txt
   outputs/                <- checkpoints, plots, results land here
 ```
@@ -94,4 +108,6 @@ brain_tumor_project/
 - Class imbalance should be checked and reported (see `data_loader.py`'s
   `print_class_distribution` helper).
 - 2D slice classification ignores 3D spatial context that a radiologist would use.
+- There are no patient IDs, and near-duplicate images may occur across the provided
+  training and testing folders. Reported test performance may therefore be optimistic.
 - This is explicitly a research/prototype tool, not a diagnostic system.
