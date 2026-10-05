@@ -20,6 +20,8 @@ from torchvision import datasets, transforms
 CLASS_NAMES = ["glioma", "meningioma", "notumor", "pituitary"]
 IMG_SIZE = 224
 DATA_DIR = "data"
+IMAGE_MEAN = [0.485, 0.456, 0.406]
+IMAGE_STD = [0.229, 0.224, 0.225]
 
 
 def get_transforms(train: bool):
@@ -31,14 +33,12 @@ def get_transforms(train: bool):
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(10),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                  std=[0.229, 0.224, 0.225]),
+            transforms.Normalize(mean=IMAGE_MEAN, std=IMAGE_STD),
         ])
     return transforms.Compose([
         transforms.Resize((IMG_SIZE, IMG_SIZE)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                              std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=IMAGE_MEAN, std=IMAGE_STD),
     ])
 
 
