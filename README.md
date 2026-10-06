@@ -42,19 +42,51 @@ pip install -r requirements.txt
 
 Train the requested ResNet50 in two phases. The default is 5 classifier-head epochs
 followed by 10 fine-tuning epochs:
+
 ```bash
 python train.py
 ```
 
 To choose the number of epochs for each phase:
+
 ```bash
 python train.py --head_epochs 5 --epochs 8
 ```
+
 The head-only phase uses Adam at `1e-3`; fine-tuning unfreezes the full network
 and uses Adam at `1e-5`. Each epoch prints train/validation loss and accuracy,
 and the checkpoint with the best validation accuracy is kept.
 
 Training saves `outputs/resnet50_best.pt` and `outputs/resnet50_curves.png`.
+
+## 3b. Train EfficientNet-B0 instead
+
+Both `train.py` and `evaluate.py` now take a `--model` flag
+(`resnet50` or `efficientnet_b0`; defaults to `resnet50` so existing
+commands still work unchanged):
+
+```
+python train.py --model efficientnet_b0 --head_epochs 5 --epochs 8
+```
+
+This runs the same two-phase schedule as ResNet50 (freeze the pretrained
+backbone and train just the classifier head first, then unfreeze and
+fine-tune the whole network at a lower learning rate). It saves to
+`outputs/efficientnet_b0_best.pt` and `outputs/efficientnet_b0_curves.png`
+so it won't overwrite a ResNet50 run.
+
+Then evaluate the same way as before — the checkpoint remembers which
+architecture it is, so `--model` doesn't need to be passed again:
+
+```
+python evaluate.py --checkpoint outputs/efficientnet_b0_best.pt
+```
+
+This saves `outputs/efficientnet_b0_confusion_matrix.png`.
+
+**Note:** `hybrid_svm.py` and `grad_cam.py` still assume a ResNet50
+checkpoint (they reference `model.fc` and `model.layer4[-1]` directly) and
+have not been updated to support EfficientNet-B0 in this branch.
 
 ## 4. Evaluate
 
@@ -69,9 +101,11 @@ recall for glioma, meningioma, and pituitary rather than relying on accuracy alo
 ## 5. Compare the softmax and SVM heads
 
 Run the hybrid comparison using the trained ResNet50 checkpoint:
+
 ```bash
 python hybrid_svm.py --checkpoint outputs/resnet50_best.pt
 ```
+
 It extracts 2048-dimensional ResNet50 features, fits `StandardScaler` + an RBF SVM
 on the training split, and reports both classifiers on the same held-out `Testing/`
 images. It saves both confusion matrices and `outputs/resnet50_svm.joblib`.
@@ -81,6 +115,7 @@ images. It saves both confusion matrices and `outputs/resnet50_svm.joblib`.
 ```bash
 python grad_cam.py --checkpoint outputs/resnet50_best.pt --image data/Testing/glioma/example.jpg
 ```
+
 The overlay is saved to `outputs/gradcam.png`. Grad-CAM is a qualitative inspection
 tool, not evidence that the model is clinically reliable or attending to the correct
 medical features.
