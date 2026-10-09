@@ -4,6 +4,14 @@ import torch.nn as nn
 from torchvision import models
 
 
+def build_resnet18(num_classes=4, pretrained=True):
+    """Build ResNet18 and replace its ImageNet classifier with a task head."""
+    weights = models.ResNet18_Weights.DEFAULT if pretrained else None
+    model = models.resnet18(weights=weights)
+    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    return model
+
+
 def build_resnet50(num_classes=4, pretrained=True):
     """Build ResNet50 and replace its ImageNet classifier with a task head."""
     weights = models.ResNet50_Weights.DEFAULT if pretrained else None
@@ -26,16 +34,18 @@ def build_efficientnet_b0(num_classes=4, pretrained=True):
 
 
 # Registry of available architectures, keyed by the --model flag used in
-# train.py / evaluate.py.
+# train.py / evaluate.py. 
 MODEL_BUILDERS = {
+    "resnet18": build_resnet18,
     "resnet50": build_resnet50,
     "efficientnet_b0": build_efficientnet_b0,
 }
 
 # Name of each architecture's classifier-head submodule. train.py uses this
-# to know which parameters stay trainable during the head-only phase, since
-# ResNet50 calls it `fc` and EfficientNet-B0 calls it `classifier`.
+# to know which parameters stay trainable during the head-only phase. Both
+# ResNets call it `fc`; EfficientNet-B0 calls it `classifier`.
 CLASSIFIER_ATTR = {
+    "resnet18": "fc",
     "resnet50": "fc",
     "efficientnet_b0": "classifier",
 }
