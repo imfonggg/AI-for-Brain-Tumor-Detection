@@ -98,6 +98,15 @@ This prints accuracy, precision, recall, and F1 (overall and per-class), and sav
 confusion matrix image to `outputs/resnet50_confusion_matrix.png`. Check per-class
 recall for glioma, meningioma, and pituitary rather than relying on accuracy alone.
 
+To also save the overall and per-class metrics to a CSV file, provide its path with
+`--output_csv`:
+
+```bash
+python evaluate.py --checkpoint outputs/resnet50_best.pt --output_csv outputs/resnet50_metrics.csv
+```
+
+Choose a different path or filename to keep separate evaluation results.
+
 ## 5. Compare the softmax and SVM heads
 
 Run the hybrid comparison using the trained ResNet50 checkpoint:

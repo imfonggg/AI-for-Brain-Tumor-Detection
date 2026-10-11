@@ -11,6 +11,7 @@ as a fallback for older checkpoints that predate that field.
 """
 
 import argparse
+import csv
 import os
 
 import matplotlib.pyplot as plt
@@ -30,6 +31,11 @@ def main():
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--data_dir", default="data")
     parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument(
+        "--output_csv",
+        default=None,
+        help="Optional path for saving overall and per-class metrics as CSV",
+    )
     parser.add_argument("--model", default=None, choices=sorted(CLASSIFIER_ATTR),
                          help="Override architecture if the checkpoint has no "
                               "'model_name' field (older checkpoints only)")
@@ -76,6 +82,49 @@ def main():
     print("\nPer-class report:")
     print(classification_report(all_labels, all_preds, target_names=class_names,
                                  zero_division=0))
+
+    if args.output_csv:
+        class_precision, class_recall, class_f1, class_support = (
+            precision_recall_fscore_support(
+                all_labels,
+                all_preds,
+                labels=range(len(class_names)),
+                average=None,
+                zero_division=0,
+            )
+        )
+        output_dir = os.path.dirname(args.output_csv)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        with open(args.output_csv, "w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.DictWriter(
+                csv_file,
+                fieldnames=[
+                    "model", "scope", "class", "accuracy", "precision",
+                    "recall", "f1", "support",
+                ],
+            )
+            writer.writeheader()
+            writer.writerow({
+                "model": model_name,
+                "scope": "overall",
+                "accuracy": acc,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+                "support": len(all_labels),
+            })
+            for index, class_name in enumerate(class_names):
+                writer.writerow({
+                    "model": model_name,
+                    "scope": "class",
+                    "class": class_name,
+                    "precision": class_precision[index],
+                    "recall": class_recall[index],
+                    "f1": class_f1[index],
+                    "support": class_support[index],
+                })
+        print(f"Metrics CSV saved to {args.output_csv}")
 
     # Confusion matrix
     cm = confusion_matrix(all_labels, all_preds)
