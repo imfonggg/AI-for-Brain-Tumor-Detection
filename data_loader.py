@@ -4,6 +4,7 @@ Data loading utilities for the Brain Tumor MRI classification project.
 Expects data laid out as:
     data/Training/<class_name>/*.jpg
     data/Testing/<class_name>/*.jpg
+
 where <class_name> is one of: glioma, meningioma, pituitary, notumor
 (folder names from the Kaggle "Brain Tumor MRI Dataset" -- adjust
 CLASS_NAMES below if your download uses different folder names).
@@ -19,6 +20,8 @@ from torchvision import datasets, transforms
 CLASS_NAMES = ["glioma", "meningioma", "notumor", "pituitary"]
 IMG_SIZE = 224
 DATA_DIR = "data"
+IMAGE_MEAN = [0.485, 0.456, 0.406]
+IMAGE_STD = [0.229, 0.224, 0.225]
 
 
 def get_transforms(train: bool):
@@ -30,14 +33,12 @@ def get_transforms(train: bool):
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(10),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
+            transforms.Normalize(mean=IMAGE_MEAN, std=IMAGE_STD),
         ])
     return transforms.Compose([
         transforms.Resize((IMG_SIZE, IMG_SIZE)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=IMAGE_MEAN, std=IMAGE_STD),
     ])
 
 
@@ -48,12 +49,10 @@ def print_class_distribution(dataset, name="dataset"):
         labels = dataset.targets
     else:  # a Subset from random_split
         labels = [dataset.dataset.targets[i] for i in dataset.indices]
-
     counts = Counter(labels)
     idx_to_class = {v: k for k, v in dataset.dataset.class_to_idx.items()} \
         if hasattr(dataset, "dataset") else \
         {v: k for k, v in dataset.class_to_idx.items()}
-
     print(f"\nClass distribution for {name} (n={len(labels)}):")
     for idx, count in sorted(counts.items()):
         pct = 100 * count / len(labels)
@@ -61,14 +60,11 @@ def print_class_distribution(dataset, name="dataset"):
 
 
 def get_dataloaders(data_dir=DATA_DIR, batch_size=32, val_split=0.15, num_workers=2,
-                    augment_train=True, verbose=True):
+                    augment_train=True):
     """Returns train_loader, val_loader, test_loader, class_names.
 
     Training/ is split into train/val. Testing/ is used only for final evaluation
     (evaluate.py) so numbers stay honest -- don't peek at it during training.
-
-    verbose=False suppresses the class-distribution printout (evaluate.py uses
-    this because it writes those counts to CSV instead).
     """
     train_dir = os.path.join(data_dir, "Training")
     test_dir = os.path.join(data_dir, "Testing")
@@ -90,22 +86,20 @@ def get_dataloaders(data_dir=DATA_DIR, batch_size=32, val_split=0.15, num_worker
         full_train, [n_train, n_val],
         generator=torch.Generator().manual_seed(42)
     )
-
     # val split should NOT use training augmentation -- swap in eval transforms
     val_subset.dataset = datasets.ImageFolder(train_dir, transform=get_transforms(train=False))
 
     test_dataset = datasets.ImageFolder(test_dir, transform=get_transforms(train=False))
 
-    if verbose:
-        print_class_distribution(train_subset, "train")
-        print_class_distribution(val_subset, "validation")
+    print_class_distribution(train_subset, "train")
+    print_class_distribution(val_subset, "validation")
 
     train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers)
+                               num_workers=num_workers)
     val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False,
-                            num_workers=num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                              num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                              num_workers=num_workers)
 
     return train_loader, val_loader, test_loader, class_names
 
