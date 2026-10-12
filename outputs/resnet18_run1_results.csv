@@ -1,8 +1,0 @@
-class,train_count,train_percent,val_count,val_percent,test_precision,test_recall,test_f1,test_support,best_val_accuracy,test_accuracy
-glioma,1176,24.7,224,26.7,0.9845,0.7925,0.8781,400,,
-meningioma,1185,24.9,215,25.6,0.8552,0.96,0.9046,400,,
-notumor,1193,25.1,207,24.6,0.9433,0.9975,0.9696,400,,
-pituitary,1206,25.3,194,23.1,0.9778,0.9925,0.9851,400,,
-macro avg,,,,,0.9402,0.9356,0.9344,1600,,
-weighted avg,,,,,0.9402,0.9356,0.9344,1600,,
-overall,4760,,840,,,,,1600,0.9679,0.9356
