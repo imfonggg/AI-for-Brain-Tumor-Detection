@@ -1,0 +1,82 @@
+{
+    "Overall Accuracy": 0.8575,
+    "Macro Precision": 0.8706,
+    "Macro Recall (Sensitivity)": 0.8575,
+    "Macro Specificity": 0.9525,
+    "Macro F1-Score": 0.8527,
+    "Weighted Precision": 0.8706,
+    "Weighted Recall": 0.8575,
+    "Weighted F1-Score": 0.8527,
+    "Per-Class Breakdown": {
+        "glioma": {
+            "TP": 256,
+            "FP": 6,
+            "FN": 144,
+            "TN": 1194,
+            "Precision (PPV)": 0.9771,
+            "Recall / Sensitivity (TPR)": 0.64,
+            "Specificity (TNR)": 0.995,
+            "F1-Score": 0.7734,
+            "Support": 400
+        },
+        "meningioma": {
+            "TP": 327,
+            "FP": 101,
+            "FN": 73,
+            "TN": 1099,
+            "Precision (PPV)": 0.764,
+            "Recall / Sensitivity (TPR)": 0.8175,
+            "Specificity (TNR)": 0.9158,
+            "F1-Score": 0.7899,
+            "Support": 400
+        },
+        "notumor": {
+            "TP": 396,
+            "FP": 89,
+            "FN": 4,
+            "TN": 1111,
+            "Precision (PPV)": 0.8165,
+            "Recall / Sensitivity (TPR)": 0.99,
+            "Specificity (TNR)": 0.9258,
+            "F1-Score": 0.8949,
+            "Support": 400
+        },
+        "pituitary": {
+            "TP": 393,
+            "FP": 32,
+            "FN": 7,
+            "TN": 1168,
+            "Precision (PPV)": 0.9247,
+            "Recall / Sensitivity (TPR)": 0.9825,
+            "Specificity (TNR)": 0.9733,
+            "F1-Score": 0.9527,
+            "Support": 400
+        }
+    },
+    "Confusion Matrix": [
+        [
+            256,
+            91,
+            49,
+            4
+        ],
+        [
+            5,
+            327,
+            40,
+            28
+        ],
+        [
+            0,
+            4,
+            396,
+            0
+        ],
+        [
+            1,
+            6,
+            0,
+            393
+        ]
+    ]
+}

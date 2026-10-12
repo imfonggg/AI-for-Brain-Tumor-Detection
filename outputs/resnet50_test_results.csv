@@ -1,0 +1,32 @@
+Metric_Category,Metric_Name,Value,Notes
+Global,Model_Name,ResNet-50,Two-Stage Transfer Learning (ImageNet-1K V2)
+Global,Training_Samples,4760,1190 per class
+Global,Validation_Samples,840,210 per class
+Global,Testing_Samples,1600,400 per class
+Global,Best_Val_Accuracy,0.9202,92.02%
+Global,Best_Val_Loss,0.2104,
+Global,Test_Accuracy,0.8575,85.75%
+Global,Test_Precision_Weighted,0.8706,87.06%
+Global,Test_Recall_Weighted,0.8575,85.75%
+Global,Test_F1_Weighted,0.8527,85.27%
+Global,Test_Macro_Specificity,0.9525,95.25%
+Per-Class,glioma_Precision,0.9771,97.71% PPV
+Per-Class,glioma_Recall,0.6400,64.00% Sensitivity (TPR)
+Per-Class,glioma_Specificity,0.9950,99.50% TNR
+Per-Class,glioma_F1_Score,0.7734,
+Per-Class,glioma_Support,400,
+Per-Class,meningioma_Precision,0.7640,76.40% PPV
+Per-Class,meningioma_Recall,0.8175,81.75% Sensitivity (TPR)
+Per-Class,meningioma_Specificity,0.9158,91.58% TNR
+Per-Class,meningioma_F1_Score,0.7899,
+Per-Class,meningioma_Support,400,
+Per-Class,notumor_Precision,0.8165,81.65% PPV
+Per-Class,notumor_Recall,0.9900,99.00% Sensitivity (TPR)
+Per-Class,notumor_Specificity,0.9258,92.58% TNR
+Per-Class,notumor_F1_Score,0.8949,
+Per-Class,notumor_Support,400,
+Per-Class,pituitary_Precision,0.9247,92.47% PPV
+Per-Class,pituitary_Recall,0.9825,98.25% Sensitivity (TPR)
+Per-Class,pituitary_Specificity,0.9733,97.33% TNR
+Per-Class,pituitary_F1_Score,0.9527,
+Per-Class,pituitary_Support,400,

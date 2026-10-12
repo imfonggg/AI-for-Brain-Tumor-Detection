@@ -1,0 +1,18 @@
+# Raw Dataset (do not upload 7,200 MRI images to GitHub)
+data/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

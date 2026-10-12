@@ -1,0 +1,6 @@
+Actual_Class,Pred_glioma,Pred_meningioma,Pred_notumor,Pred_pituitary,Total_Actual
+glioma,256,91,49,4,400
+meningioma,5,327,40,28,400
+notumor,0,4,396,0,400
+pituitary,1,6,0,393,400
+Total_Predicted,262,428,485,425,1600
