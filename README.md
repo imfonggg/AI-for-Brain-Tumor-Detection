@@ -102,6 +102,23 @@ This saves `outputs/efficientnet_b0_confusion_matrix.png`.
 checkpoint (they reference `model.fc` and `model.layer4[-1]` directly) and
 have not been updated to support EfficientNet-B0 in this branch.
 
+## 3c. Train both models on Google Colab
+
+`train_colab.ipynb` trains ResNet50 and EfficientNet-B0 one after the other on a
+Colab T4 GPU. Put `data_real.zip` in `MyDrive/brain_tumor/`, open the notebook in
+Colab, pick the T4 runtime and run all cells. Results are saved to
+`MyDrive/brain_tumor/outputs/`; re-running after a disconnect skips any model that
+already finished.
+
+To compare models yourself, evaluate each one with `--output_csv`, then:
+
+```bash
+python compare_models.py outputs/resnet50_metrics.csv outputs/efficientnet_b0_metrics.csv
+```
+
+This prints overall and per-class results side by side and saves
+`outputs/model_comparison.csv` and `outputs/model_comparison.png`.
+
 ## 4. Evaluate
 
 ```bash
@@ -153,6 +170,8 @@ brain_tumor_project/
   data_loader.py         <- dataset class, transforms, train/val split
   model.py                <- pretrained ResNet50 construction
   train.py                <- training loop, saves checkpoints + curves
+  train_colab.ipynb       <- trains and compares both models on a Colab GPU
+  compare_models.py       <- side-by-side results for several models
   evaluate.py              <- metrics: accuracy/precision/recall/F1/confusion matrix
   hybrid_svm.py            <- compares softmax and ResNet50-feature SVM classifiers
   grad_cam.py              <- creates a Grad-CAM image overlay
