@@ -35,8 +35,9 @@ Implemented so far
      are created.
 
 2. Models
-   - model.py now exposes only build_resnet50; BaselineCNN, ResNet18, and
-     EfficientNet-B0 implementations and selection paths have been removed.
+   - model.py exposes ResNet18, ResNet50 and EfficientNet-B0 through
+     build_model(name). train.py and evaluate.py select one with --model
+     (resnet50 by default); compare_models.py puts their results side by side.
    - ResNet50 training uses torchvision ResNet50_Weights.DEFAULT and replaces
      the original fully connected layer with a four-class linear classifier.
    - build_resnet50 accepts pretrained=False so checkpoint consumers can
