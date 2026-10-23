@@ -1,34 +1,47 @@
 # AI for Brain Tumor Detection
 
-Classify brain MRI scans into 4 classes: **glioma, meningioma, pituitary, no tumor**.
+Classify brain MRI slices by tumor type. The model trains on 2D slices cut from
+real 3D MRI scans (NIfTI files). Current classes: **glioma, meningioma, no tumor**
+(pituitary and other types will be added as 3D sources are found).
 
 This is a research/prototype project — NOT a clinical diagnostic tool.
 
-## 1. Get the dataset
+## 1. Build the dataset from NIfTI scans
 
-Recommended: Kaggle "Brain Tumor MRI Dataset" (4-class, pre-split into folders).
+`nifti_slices.py` turns 3D volumes into axial JPEG slices:
 
-1. Go to Kaggle and search "Brain Tumor MRI Dataset" (Masoud Nickparvar's version is the
-   most widely used — ~7,000 images, glioma/meningioma/pituitary/notumor).
-2. Download and unzip it.
-3. Arrange it like this inside `data/`:
+| Class      | Source                                              | Sequence           |
+|------------|-----------------------------------------------------|--------------------|
+| glioma     | BraTS 2021 (UCSF-PDGM cases by default)             | T1 post-contrast   |
+| meningioma | BraTS-style meningioma set                          | T1 post-contrast   |
+| notumor    | IXI healthy controls (streamed from the IXI server) | T1                 |
+
+Tumor slices are picked where the segmentation mask shows the most tumor; IXI
+slices come from the mid brain. Every patient goes entirely into `Training/` or
+`Testing/` (20% of patients held out), and `data_loader.py` also splits train/val
+by patient, so no patient's slices appear on both sides of any split.
+
+The easiest way to run it is the Kaggle notebook `nfti-to-jpeg-conversion.ipynb`
+(attach the BraTS and meningioma datasets, turn Internet on, run all). It writes
+`data_real.zip`. Or run the script directly:
+
+```bash
+python nifti_slices.py --out_dir data_real \
+    --glioma_root /path/to/brats-2021 \
+    --meningioma_root /path/to/meningioma \
+    --ixi
+```
+
+Output layout (the default `--data_dir` for training and evaluation):
 
 ```
-data/
-  Training/
-    glioma/
-    meningioma/
-    pituitary/
-    notumor/
-  Testing/
-    glioma/
-    meningioma/
-    pituitary/
-    notumor/
+data_real/
+  Training/{glioma,meningioma,notumor}/<patientID>_z###.jpg
+  Testing/{glioma,meningioma,notumor}/<patientID>_z###.jpg
 ```
 
-If your download already has this `Training/Testing` + class-folder structure, just drop
-it straight into `data/`.
+The older Kaggle JPEG dataset in `data/` is no longer used by default; pass
+`--data_dir data` to the scripts to run on it.
 
 ## 2. Install dependencies
 
@@ -36,6 +49,7 @@ it straight into `data/`.
 python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+pip install nibabel requests pandas   # only needed for nifti_slices.py
 ```
 
 ## 3. Train
@@ -122,7 +136,7 @@ images. It saves both confusion matrices and `outputs/resnet50_svm.joblib`.
 ## 6. Inspect a Grad-CAM heatmap
 
 ```bash
-python grad_cam.py --checkpoint outputs/resnet50_best.pt --image data/Testing/glioma/example.jpg
+python grad_cam.py --checkpoint outputs/resnet50_best.pt --image data_real/Testing/glioma/UCSF-PDGM-004_z071.jpg
 ```
 
 The overlay is saved to `outputs/gradcam.png`. Grad-CAM is a qualitative inspection
@@ -133,7 +147,9 @@ medical features.
 
 ```
 brain_tumor_project/
-  data/                 <- put the dataset here (not included)
+  nifti_slices.py         <- converts NIfTI volumes into patient-split JPEG slices
+  nfti-to-jpeg-conversion.ipynb <- Kaggle notebook that runs nifti_slices.py
+  data_real/            <- generated slices (not included)
   data_loader.py         <- dataset class, transforms, train/val split
   model.py                <- pretrained ResNet50 construction
   train.py                <- training loop, saves checkpoints + curves
@@ -152,6 +168,8 @@ brain_tumor_project/
 - Class imbalance should be checked and reported (see `data_loader.py`'s
   `print_class_distribution` helper).
 - 2D slice classification ignores 3D spatial context that a radiologist would use.
-- There are no patient IDs, and near-duplicate images may occur across the provided
-  training and testing folders. Reported test performance may therefore be optimistic.
+- Tumor classes are T1 post-contrast from BraTS scanners while healthy controls are
+  plain T1 from IXI hospitals, so a model could learn contrast/scanner differences
+  instead of tumor features. `--notumor_from_tumor_patients` in `nifti_slices.py`
+  adds same-scanner notumor slices to reduce this; compare results with and without it.
 - This is explicitly a research/prototype tool, not a diagnostic system.

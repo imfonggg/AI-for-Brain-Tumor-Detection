@@ -29,7 +29,7 @@ OUTPUT_DIR = "outputs"
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--data_dir", default="data")
+    parser.add_argument("--data_dir", default="data_real")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument(
         "--output_csv",

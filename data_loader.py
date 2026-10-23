@@ -2,24 +2,29 @@
 Data loading utilities for the Brain Tumor MRI classification project.
 
 Expects data laid out as:
-    data/Training/<class_name>/*.jpg
-    data/Testing/<class_name>/*.jpg
+    data_real/Training/<class_name>/*.jpg
+    data_real/Testing/<class_name>/*.jpg
 
-where <class_name> is one of: glioma, meningioma, pituitary, notumor
-(folder names from the Kaggle "Brain Tumor MRI Dataset" -- adjust
-CLASS_NAMES below if your download uses different folder names).
+as written by nifti_slices.py from real 3D MRI scans. Classes come from the
+folder names, so any subset of glioma, meningioma, notumor, pituitary works.
+
+Filenames of the form <patientID>_z###.jpg are grouped by patient when
+splitting train/val, so no patient appears on both sides. Files without that
+pattern are treated as their own group.
 """
 
 import os
-from collections import Counter
+import random
+import re
+from collections import Counter, defaultdict
 
-import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 
 CLASS_NAMES = ["glioma", "meningioma", "notumor", "pituitary"]
 IMG_SIZE = 224
-DATA_DIR = "data"
+DATA_DIR = "data_real"
+PATIENT_PATTERN = re.compile(r"^(.+)_z\d+$")
 IMAGE_MEAN = [0.485, 0.456, 0.406]
 IMAGE_STD = [0.229, 0.224, 0.225]
 
@@ -47,7 +52,7 @@ def print_class_distribution(dataset, name="dataset"):
     and the project guidelines ask you to report this kind of thing."""
     if hasattr(dataset, "targets"):
         labels = dataset.targets
-    else:  # a Subset from random_split
+    else:  # a Subset from split_by_patient
         labels = [dataset.dataset.targets[i] for i in dataset.indices]
     counts = Counter(labels)
     idx_to_class = {v: k for k, v in dataset.dataset.class_to_idx.items()} \
@@ -57,6 +62,29 @@ def print_class_distribution(dataset, name="dataset"):
     for idx, count in sorted(counts.items()):
         pct = 100 * count / len(labels)
         print(f"  {idx_to_class[idx]:<12} {count:>5} ({pct:.1f}%)")
+
+
+def patient_id(path):
+    """Patient ID from a '<patientID>_z###.jpg' filename, else the filename itself."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    match = PATIENT_PATTERN.match(stem)
+    return match.group(1) if match else stem
+
+
+def split_by_patient(samples, val_split, seed=42):
+    """Return (train_indices, val_indices) with every patient on one side only."""
+    groups = defaultdict(list)
+    for index, (path, _) in enumerate(samples):
+        groups[patient_id(path)].append(index)
+    patients = sorted(groups)
+    random.Random(seed).shuffle(patients)
+
+    n_val_target = int(len(samples) * val_split)
+    train_indices, val_indices = [], []
+    for pid in patients:
+        target = val_indices if len(val_indices) < n_val_target else train_indices
+        target.extend(groups[pid])
+    return train_indices, val_indices
 
 
 def get_dataloaders(data_dir=DATA_DIR, batch_size=32, val_split=0.15, num_workers=2,
@@ -80,14 +108,12 @@ def get_dataloaders(data_dir=DATA_DIR, batch_size=32, val_split=0.15, num_worker
     )
     class_names = full_train.classes
 
-    n_val = int(len(full_train) * val_split)
-    n_train = len(full_train) - n_val
-    train_subset, val_subset = random_split(
-        full_train, [n_train, n_val],
-        generator=torch.Generator().manual_seed(42)
+    train_indices, val_indices = split_by_patient(full_train.samples, val_split)
+    train_subset = Subset(full_train, train_indices)
+    # val split should NOT use training augmentation -- use eval transforms
+    val_subset = Subset(
+        datasets.ImageFolder(train_dir, transform=get_transforms(train=False)), val_indices
     )
-    # val split should NOT use training augmentation -- swap in eval transforms
-    val_subset.dataset = datasets.ImageFolder(train_dir, transform=get_transforms(train=False))
 
     test_dataset = datasets.ImageFolder(test_dir, transform=get_transforms(train=False))
 

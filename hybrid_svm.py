@@ -68,7 +68,7 @@ def report_results(name, labels, predictions, class_names):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--data_dir", default="data")
+    parser.add_argument("--data_dir", default="data_real")
     parser.add_argument("--batch_size", type=int, default=32)
     args = parser.parse_args()
 

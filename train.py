@@ -61,7 +61,7 @@ def main():
     parser.add_argument("--head_epochs", type=int, default=5,
                          help="Epochs with only the classifier head trainable")
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--data_dir", default="data")
+    parser.add_argument("--data_dir", default="data_real")
     args = parser.parse_args()
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
