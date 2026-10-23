@@ -1,8 +1,8 @@
 # AI for Brain Tumor Detection
 
 Classify brain MRI slices by tumor type. The model trains on 2D slices cut from
-real 3D MRI scans (NIfTI files). Current classes: **glioma, meningioma, no tumor**
-(pituitary and other types will be added as 3D sources are found).
+real 3D MRI scans (NIfTI files). Classes: **glioma, meningioma, no tumor**
+and pituitary once its dataset is downloaded (see `docs/datasets.md`).
 
 This is a research/prototype project — NOT a clinical diagnostic tool.
 
@@ -14,7 +14,10 @@ This is a research/prototype project — NOT a clinical diagnostic tool.
 |------------|-----------------------------------------------------|--------------------|
 | glioma     | BraTS 2021 (UCSF-PDGM cases by default)             | T1 post-contrast   |
 | meningioma | BraTS-style meningioma set                          | T1 post-contrast   |
+| pituitary  | Pituitary NET MRI dataset (Figshare)                | T1 post-contrast   |
 | notumor    | IXI healthy controls (streamed from the IXI server) | T1                 |
+
+See `docs/datasets.md` for where to get these and for more tumor types.
 
 Tumor slices are picked where the segmentation mask shows the most tumor; IXI
 slices come from the mid brain. Every patient goes entirely into `Training/` or

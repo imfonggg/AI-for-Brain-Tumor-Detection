@@ -13,6 +13,8 @@ every filename so data_loader.py can also split train/val by patient.
 Sources currently supported:
     glioma      BraTS 2021 (optionally only the UCSF-PDGM cases), T1 post-contrast
     meningioma  BraTS-style meningioma set (e.g. BraTS 2023 MEN), T1 post-contrast
+    pituitary   Pituitary NET MRI dataset (Figshare 10.6084/m9.figshare.27894084),
+                T1 post-contrast with tumour masks
     notumor     IXI healthy controls, T1, streamed from the IXI server
 
 Usage (Kaggle or Colab, after attaching the datasets):
@@ -29,7 +31,8 @@ telling contrast/scanner apart instead of tumor/no tumor.
 --notumor_from_tumor_patients adds tumor-free T1 post-contrast slices (far from
 the tumor) from the same BraTS patients as extra notumor examples, which makes
 that shortcut less useful. Those brains still have a tumor elsewhere, so check
-the results with and without it.
+the results with and without it. BraTS volumes are also skull-stripped while IXI
+and the pituitary set are not, which is a second shortcut of the same kind.
 """
 
 import argparse
@@ -162,14 +165,25 @@ def load_ucsf_mapping():
     return dict(zip(meta["BraTS21 ID"].str.strip(), meta["ID"].str.strip()))
 
 
-def process_brats(root, class_name, args, keep_ids=None):
-    """keep_ids: optional {folder_name: output_name}; only those cases are used."""
+# BraTS 2021 names T1-contrast "_t1ce", BraTS 2023+ uses "-t1c"
+BRATS_IMAGE = ["*t1ce.nii*", "*t1c.nii*"]
+BRATS_MASK = ["*seg.nii*"]
+# Pituitary NET dataset: <pid>_T1.nii.gz (post-contrast) and <pid>_tumour.nii.gz
+PITUITARY_IMAGE = ["*_T1.nii*"]
+PITUITARY_MASK = ["*_tumour.nii*"]
+
+
+def process_brats(root, class_name, args, keep_ids=None,
+                  image_patterns=BRATS_IMAGE, mask_patterns=BRATS_MASK):
+    """Datasets with one folder per patient holding an image and a tumor mask.
+    keep_ids: optional {folder_name: output_name}; only those cases are used."""
     cases = set()
-    for p in glob.glob(f"{root}/**/*seg.nii*", recursive=True):
-        d = os.path.dirname(p)
-        if ".nii" in os.path.basename(d):   # match was the file inside a '*seg.nii' folder
-            d = os.path.dirname(d)
-        cases.add(d)
+    for pattern in mask_patterns:
+        for p in glob.glob(f"{root}/**/{pattern}", recursive=True):
+            d = os.path.dirname(p)
+            if ".nii" in os.path.basename(d):   # match was the file inside a '*seg.nii' folder
+                d = os.path.dirname(d)
+            cases.add(d)
     cases = sorted(cases)
     if keep_ids is not None:
         cases = [c for c in cases if os.path.basename(c) in keep_ids]
@@ -178,9 +192,8 @@ def process_brats(root, class_name, args, keep_ids=None):
     for case in cases:
         if done >= args.max_patients:
             break
-        # BraTS 2021 names T1-contrast "_t1ce", BraTS 2023+ uses "-t1c"
-        t1c = first_match(case, ["*t1ce.nii*", "*t1c.nii*"])
-        seg = first_match(case, ["*seg.nii*"])
+        t1c = first_match(case, image_patterns)
+        seg = first_match(case, mask_patterns)
         if not (t1c and seg):
             continue
         try:
@@ -263,6 +276,8 @@ def main():
                         help="Use every BraTS 2021 case instead of only UCSF-PDGM ones")
     parser.add_argument("--meningioma_root", default=None,
                         help="BraTS-style meningioma folder")
+    parser.add_argument("--pituitary_root", default=None,
+                        help="Pituitary NET dataset folder (<pid>_T1 + <pid>_tumour files)")
     parser.add_argument("--ixi", action="store_true",
                         help="Stream IXI T1 healthy controls (needs internet)")
     parser.add_argument("--ixi_hospitals", nargs="*", default=None,
@@ -287,6 +302,9 @@ def main():
         process_brats(args.glioma_root, "glioma", args, keep_ids=ucsf_map)
     if args.meningioma_root:
         process_brats(args.meningioma_root, "meningioma", args)
+    if args.pituitary_root:
+        process_brats(args.pituitary_root, "pituitary", args,
+                      image_patterns=PITUITARY_IMAGE, mask_patterns=PITUITARY_MASK)
     if args.ixi:
         process_ixi(args, hospitals=args.ixi_hospitals)
 
