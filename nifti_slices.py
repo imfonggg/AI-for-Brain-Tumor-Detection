@@ -36,11 +36,13 @@ and the pituitary set are not, which is a second shortcut of the same kind.
 """
 
 import argparse
+import functools
 import glob
 import hashlib
 import os
 import shutil
 import tarfile
+import time
 
 import numpy as np
 import nibabel as nib
@@ -52,6 +54,10 @@ MAX_PATIENTS = 400        # per class; keeps classes roughly balanced
 TEST_FRACTION = 0.2
 SPLIT_SEED = 42
 RADIOLOGICAL = True       # patient's right on image left (typical clinical view)
+PROGRESS_EVERY = 25      # print a progress line every N patients
+
+# Flush every line so progress shows up live in notebooks and piped logs
+print = functools.partial(print, flush=True)
 
 UCSF_CSV_URL = "https://www.cancerimagingarchive.net/wp-content/uploads/UCSF-PDGM-metadata_v5.csv"
 IXI_T1_URL = "http://biomedic.doc.ic.ac.uk/brain-development/downloads/IXI/IXI-T1.tar"
@@ -160,7 +166,12 @@ def first_match(folder, patterns):
 def load_ucsf_mapping():
     """Return {BraTS2021_xxxxx: UCSF-PDGM-xxx} from the UCSF-PDGM clinical CSV."""
     import pandas as pd
-    meta = pd.read_csv(UCSF_CSV_URL)
+    import io
+    import requests
+    print("Downloading UCSF-PDGM case list...")
+    r = requests.get(UCSF_CSV_URL, timeout=60)
+    r.raise_for_status()
+    meta = pd.read_csv(io.StringIO(r.text))
     meta = meta[meta["BraTS21 ID"].notna()]
     return dict(zip(meta["BraTS21 ID"].str.strip(), meta["ID"].str.strip()))
 
@@ -188,6 +199,8 @@ def process_brats(root, class_name, args, keep_ids=None,
     if keep_ids is not None:
         cases = [c for c in cases if os.path.basename(c) in keep_ids]
     print(f"{class_name}: found {len(cases)} cases with segmentations")
+    target = min(len(cases), args.max_patients)
+    start = time.time()
     done = 0
     for case in cases:
         if done >= args.max_patients:
@@ -215,6 +228,8 @@ def process_brats(root, class_name, args, keep_ids=None,
                 save_axial(vol, z, f"{free_out}/{pid}_z{z:03d}.jpg", args.min_brain_voxels)
         if saved:
             done += 1
+            if done % PROGRESS_EVERY == 0:
+                print(f"  {class_name}: {done}/{target} patients ({time.time() - start:.0f}s)")
     print(f"{class_name}: saved slices from {done} patients")
 
 
@@ -223,6 +238,8 @@ def process_ixi(args, hospitals=None):
     tmp = os.path.join(args.tmp_dir, "ixi")
     os.makedirs(tmp, exist_ok=True)
     import requests
+    print(f"notumor (IXI): streaming {IXI_T1_URL}")
+    start = time.time()
     done = 0
     with requests.get(IXI_T1_URL, stream=True, timeout=120) as r:
         r.raise_for_status()
@@ -250,6 +267,9 @@ def process_ixi(args, hospitals=None):
                 os.remove(path)
                 if saved:
                     done += 1
+                    if done % PROGRESS_EVERY == 0:
+                        print(f"  notumor (IXI): {done}/{args.max_patients} patients "
+                              f"({time.time() - start:.0f}s)")
     print(f"notumor (IXI): saved slices from {done} patients")
 
 
