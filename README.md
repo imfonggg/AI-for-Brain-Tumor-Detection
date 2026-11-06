@@ -25,8 +25,9 @@ slices come from the mid brain. Every patient goes entirely into `Training/` or
 by patient, so no patient's slices appear on both sides of any split.
 
 The easiest way to run it is the Kaggle notebook `nfti-to-jpeg-conversion.ipynb`
-(attach the BraTS and meningioma datasets, turn Internet on, run all). It writes
-`data_real.zip`. Or run the script directly:
+(attach the BraTS and meningioma datasets, turn Internet on, Save & Run All). Its
+saved output is the `data_real/` folder, which the Kaggle training notebook uses
+as its input (see 3c). Or run the script directly:
 
 ```bash
 python nifti_slices.py --out_dir data_real \
@@ -105,7 +106,21 @@ This saves `outputs/efficientnet_b0_confusion_matrix.png`.
 checkpoint (they reference `model.fc` and `model.layer4[-1]` directly) and
 have not been updated to support EfficientNet-B0 in this branch.
 
-## 3c. Train both models on Google Colab
+## 3c. Train both models on Kaggle (whole pipeline on Kaggle)
+
+1. **Notebook A** `nfti-to-jpeg-conversion.ipynb`: accelerator None, Internet on,
+   attach the BraTS and meningioma datasets, then *Save Version > Save & Run All*.
+2. **Notebook B** `train_kaggle.ipynb`: *Add Input > Your Work > Notebooks* and pick
+   notebook A, set the accelerator to GPU T4, Internet on, then *Save Version >
+   Save & Run All*. It trains and tests ResNet50 and EfficientNet-B0, compares
+   them and runs the shortcut checks. Everything lands in the version's
+   `outputs/` folder.
+
+After re-running notebook A, update its version in notebook B's input panel. To
+re-run only the checks, attach a previous version of notebook B as an input too:
+its checkpoints are reused when they were trained on the same classes.
+
+## 3d. Train both models on Google Colab
 
 `train_colab.ipynb` trains ResNet50 and EfficientNet-B0 one after the other on a
 Colab T4 GPU. Put `data_real.zip` in `MyDrive/brain_tumor/`, open the notebook in
@@ -168,7 +183,8 @@ medical features.
 ```
 brain_tumor_project/
   nifti_slices.py         <- converts NIfTI volumes into patient-split JPEG slices
-  nfti-to-jpeg-conversion.ipynb <- Kaggle notebook that runs nifti_slices.py
+  nfti-to-jpeg-conversion.ipynb <- Kaggle notebook A: runs nifti_slices.py, saves data_real/
+  train_kaggle.ipynb      <- Kaggle notebook B: trains, compares and checks both models
   data_real/            <- generated slices (not included)
   data_loader.py         <- dataset class, transforms, train/val split
   model.py                <- pretrained ResNet50 construction
