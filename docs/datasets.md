@@ -31,6 +31,19 @@ BraTS-METS and BraTS-PEDs use the same folder layout as BraTS 2021, so
 folder). Pediatric glioma is still glioma, so it would add data to that class
 rather than creating a new one.
 
+## Second sources for each class (to break class = dataset)
+
+| Class | Current source | Second source | Status |
+|---|---|---|---|
+| glioma | BraTS 2021 / UCSF-PDGM | Figshare brain tumor dataset (Cheng), Kaggle `ashkhagan/figshare-brain-tumor-dataset`; or `--all_brats` for other BraTS sites | Supported: `--figshare_root` |
+| meningioma | BraTS-style MEN | Figshare brain tumor dataset (Cheng) | Supported: `--figshare_root` |
+| metastasis | Figshare metastasis set | BraTS-METS 2025 (Synapse, BraTS layout) | Needs download + a `--*_root` flag; until then metastasis is single-source |
+| notumor | IXI (Guys, HH, IOP) | Tumor-free slices from BraTS patients | Supported: `--notumor_from_tumor_patients` |
+
+The Figshare (Cheng) set is 2D slices, not volumes, in all three planes. Slice the
+3D sources in all three planes too (`--planes axial coronal sagittal`) so the view
+is not a giveaway.
+
 ## Watch out for scan-type shortcuts
 
 Each class coming from a different dataset means each class also has its own
@@ -39,8 +52,10 @@ resampled to 1 mm. IXI and the pituitary sets keep the skull and use other
 resolutions. A model can reach high accuracy by recognising those differences
 instead of the tumor. Ways to reduce this:
 
-- Skull-strip every non-BraTS volume (for example with SynthStrip or HD-BET)
-  before slicing, so all classes look alike outside the brain.
+- Skull-strip every non-BraTS volume before slicing (`nifti_slices.py --skullstrip
+  hd-bet`, or `synthstrip`), so all classes look alike outside the brain. This is
+  now part of the harmonized preprocessing in `harmonize.py`.
+- Run `shortcut_checks.py shuffle` (pass/fail) and `loso.py` after every rebuild.
 - Use `--notumor_from_tumor_patients` so some notumor slices come from the same
   scanners as the tumor classes.
 - Look at Grad-CAM on test slices: heatmaps on the skull or background mean

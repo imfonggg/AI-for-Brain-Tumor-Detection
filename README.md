@@ -8,40 +8,58 @@ This is a research/prototype project — NOT a clinical diagnostic tool.
 
 ## 1. Build the dataset from NIfTI scans
 
-`nifti_slices.py` turns 3D volumes into axial JPEG slices:
+`nifti_slices.py` turns scans from several sources into JPEG slices. A class can
+have more than one source, so that "which dataset?" no longer answers "which disease?":
 
-| Class      | Source                                              | Sequence           |
-|------------|-----------------------------------------------------|--------------------|
-| glioma     | BraTS 2021 (UCSF-PDGM cases by default)             | T1 post-contrast   |
-| meningioma | BraTS-style meningioma set                          | T1 post-contrast   |
-| pituitary  | Pituitary NET MRI dataset (Figshare)                | T1 post-contrast   |
-| notumor    | IXI healthy controls (streamed from the IXI server) | T1                 |
+| Class      | Sources                                                        | Sequence         |
+|------------|----------------------------------------------------------------|------------------|
+| glioma     | BraTS 2021 (UCSF-PDGM cases by default) + Figshare (Cheng)     | T1 post-contrast |
+| meningioma | BraTS-style meningioma set + Figshare (Cheng)                  | T1 post-contrast |
+| metastasis | Figshare brain metastasis NIfTI set                            | T1 post-contrast |
+| pituitary  | Pituitary NET MRI dataset (Figshare), optional                 | T1 post-contrast |
+| notumor    | IXI healthy controls (3 hospitals) + tumor-free BraTS slices   | T1 / T1 post-contrast |
 
 See `docs/datasets.md` for where to get these and for more tumor types.
 
-Tumor slices are picked where the segmentation mask shows the most tumor; IXI
-slices come from the mid brain. Every patient goes entirely into `Training/` or
-`Testing/` (20% of patients held out), and `data_loader.py` also splits train/val
-by patient, so no patient's slices appear on both sides of any split.
+**Harmonized preprocessing** (`harmonize.py`, on by default). Every source gets
+the same steps, so its "fingerprint" cannot identify the class:
+RAS orientation, 1 mm isotropic resampling, skull stripping (`--skullstrip
+hd-bet`, `synthstrip`, or a rough built-in `heuristic`; BraTS sets are already
+stripped), optional N4 bias correction (`--n4`), per-volume intensity
+normalization over brain voxels (`--intensity zscore` or `histmatch`), a fixed
+200 mm field of view around the brain, and one fixed intensity-to-gray mapping.
+The Figshare (Cheng) slices are 2D only, so they get the 2D version: 1 mm pixels,
+heuristic skull strip and per-patient normalization. They also mix axial,
+coronal and sagittal views, so use `--planes axial coronal sagittal` when you add
+them. `--preprocessing legacy` reproduces the old per-slice scaling.
+
+Tumor slices are picked where the segmentation mask shows the most tumor; healthy
+slices come from the same brain levels. Every patient goes entirely into
+`Training/` or `Testing/` (20% of patients held out), and `data_loader.py` also
+splits train/val by patient. `manifest.csv` records the source of every slice.
 
 The easiest way to run it is the Kaggle notebook `nfti-to-jpeg-conversion.ipynb`
-(attach the BraTS and meningioma datasets, turn Internet on, Save & Run All). Its
-saved output is the `data_real/` folder, which the Kaggle training notebook uses
-as its input (see 3c). Or run the script directly:
+(attach the datasets, Internet on, GPU T4 for HD-BET, Save & Run All). Its saved
+output is the `data_real/` folder, which the Kaggle training notebook uses as its
+input (see 3c). Or run the script directly:
 
 ```bash
+pip install hd-bet h5py
 python nifti_slices.py --out_dir data_real \
     --glioma_root /path/to/brats-2021 \
     --meningioma_root /path/to/meningioma \
-    --ixi
+    --figshare_root /path/to/figshare-brain-tumor-dataset \
+    --download_metastasis --ixi --notumor_from_tumor_patients \
+    --skullstrip hd-bet --planes axial coronal sagittal
 ```
 
 Output layout (the default `--data_dir` for training and evaluation):
 
 ```
 data_real/
-  Training/{glioma,meningioma,notumor}/<patientID>_z###.jpg
-  Testing/{glioma,meningioma,notumor}/<patientID>_z###.jpg
+  Training/<class>/<patientID>_z###.jpg      (_y### coronal, _x### sagittal)
+  Testing/<class>/<patientID>_z###.jpg
+  manifest.csv                               path, split, class, source, patient, plane
 ```
 
 The older Kaggle JPEG dataset in `data/` is no longer used by default; pass
@@ -53,7 +71,7 @@ The older Kaggle JPEG dataset in `data/` is no longer used by default; pass
 python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-pip install nibabel requests pandas   # only needed for nifti_slices.py
+pip install requests pandas hd-bet   # only needed for nifti_slices.py
 ```
 
 ## 3. Train
@@ -156,6 +174,31 @@ python evaluate.py --checkpoint outputs/resnet50_best.pt --output_csv outputs/re
 
 Choose a different path or filename to keep separate evaluation results.
 
+## 4b. Shortcut checks: is the model reading the tumor or the dataset?
+
+`evaluate.py` also prints recall per source when `manifest.csv` exists. Then:
+
+```bash
+# Pass/fail pixel-shuffle test. Shuffled pixels keep only brightness, so every
+# class should land near 1/K (25% with 4 classes). PASS = all classes within 15 points.
+python shortcut_checks.py shuffle --checkpoint outputs/resnet50_best.pt --strict
+
+# Can plain image statistics name the source or the class? Lists single-source classes.
+python shortcut_checks.py source
+
+# Leave-one-source-out: train without one source, test on it. Lower than the
+# normal test accuracy, and the more honest number. One training run per source (GPU).
+python loso.py --model resnet50 --head_epochs 3 --epochs 5
+python loso.py --dry_run          # show which sources and classes can be tested
+```
+
+The shuffle test prints a confusion matrix on shuffled slices. A strong diagonal
+(balanced accuracy above chance) means the model reads the source fingerprint. One
+full column ("everything shuffled is meningioma") with balanced accuracy at chance
+is a default answer for noise, which fails the per-class test but is less serious.
+LOSO can only test a class on a held-out source if another source also has that
+class, so single-source classes (metastasis, for now) are skipped and listed.
+
 ## 5. Compare the softmax and SVM heads
 
 Run the hybrid comparison using the trained ResNet50 checkpoint:
@@ -182,7 +225,10 @@ medical features.
 
 ```
 brain_tumor_project/
-  nifti_slices.py         <- converts NIfTI volumes into patient-split JPEG slices
+  nifti_slices.py         <- converts scans from every source into patient-split JPEG slices
+  harmonize.py            <- shared preprocessing: orientation, 1 mm, skull strip, intensity, framing
+  shortcut_checks.py      <- pass/fail pixel-shuffle test and source test
+  loso.py                 <- leave-one-source-out evaluation
   nfti-to-jpeg-conversion.ipynb <- Kaggle notebook A: runs nifti_slices.py, saves data_real/
   train_kaggle.ipynb      <- Kaggle notebook B: trains, compares and checks both models
   data_real/            <- generated slices (not included)
@@ -206,8 +252,12 @@ brain_tumor_project/
 - Class imbalance should be checked and reported (see `data_loader.py`'s
   `print_class_distribution` helper).
 - 2D slice classification ignores 3D spatial context that a radiologist would use.
-- Tumor classes are T1 post-contrast from BraTS scanners while healthy controls are
-  plain T1 from IXI hospitals, so a model could learn contrast/scanner differences
-  instead of tumor features. `--notumor_from_tumor_patients` in `nifti_slices.py`
-  adds same-scanner notumor slices to reduce this; compare results with and without it.
+- Tumor classes are T1 post-contrast while IXI healthy controls are plain T1, and
+  harmonization cannot remove a contrast difference. `--notumor_from_tumor_patients`
+  adds post-contrast notumor slices from the BraTS scanners; `--sequence t1` uses
+  native T1 for the BraTS classes instead (tumors are harder to see). Compare the
+  shuffle test and LOSO with and without them.
+- Metastasis still comes from one source (Figshare), so it can still be recognised
+  by its dataset. A second metastasis source (e.g. BraTS-METS) is needed to fix
+  that and to test it with LOSO.
 - This is explicitly a research/prototype tool, not a diagnostic system.

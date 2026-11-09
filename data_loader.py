@@ -8,23 +8,30 @@ Expects data laid out as:
 as written by nifti_slices.py from real 3D MRI scans. Classes come from the
 folder names, so any subset of glioma, meningioma, notumor, pituitary works.
 
-Filenames of the form <patientID>_z###.jpg are grouped by patient when
-splitting train/val, so no patient appears on both sides. Files without that
-pattern are treated as their own group.
+Filenames of the form <patientID>_z###.jpg (or _y### / _x### for coronal and
+sagittal slices) are grouped by patient when splitting train/val, so no patient
+appears on both sides. Files without that pattern are treated as their own group.
+
+nifti_slices.py also writes <data_dir>/manifest.csv with the source dataset of
+every slice; load_manifest() / source_of() read it (used by shortcut_checks.py,
+loso.py and evaluate.py's per-source breakdown).
 """
+
+import csv
 
 import os
 import random
 import re
 from collections import Counter, defaultdict
 
-from torch.utils.data import DataLoader, Subset
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
 CLASS_NAMES = ["glioma", "meningioma", "notumor", "pituitary"]
 IMG_SIZE = 224
 DATA_DIR = "data_real"
-PATIENT_PATTERN = re.compile(r"^(.+)_z\d+$")
+PATIENT_PATTERN = re.compile(r"^(.+)_[xyz]\d+$")
 IMAGE_MEAN = [0.485, 0.456, 0.406]
 IMAGE_STD = [0.229, 0.224, 0.225]
 
@@ -85,6 +92,71 @@ def split_by_patient(samples, val_split, seed=42):
         target = val_indices if len(val_indices) < n_val_target else train_indices
         target.extend(groups[pid])
     return train_indices, val_indices
+
+
+# ---------- source manifest ----------
+LEGACY_CLASS_SOURCE = {"glioma": "brats-ucsf", "meningioma": "brats-men",
+                       "metastasis": "figshare-mets", "pituitary": "pituitary-net"}
+
+
+def load_manifest(data_dir=DATA_DIR):
+    """Rows of <data_dir>/manifest.csv as dicts with an absolute 'abspath' added.
+    Returns [] if the dataset was built before manifests existed."""
+    path = os.path.join(data_dir, "manifest.csv")
+    if not os.path.exists(path):
+        return []
+    with open(path, newline="") as f:
+        rows = list(csv.DictReader(f))
+    for row in rows:
+        row["abspath"] = os.path.normpath(os.path.join(data_dir, row["path"]))
+    return rows
+
+
+def source_lookup(data_dir=DATA_DIR):
+    """Function path -> source name. Uses the manifest when there is one, otherwise
+    guesses from the class folder (each class had a single source before)."""
+    by_path = {row["abspath"]: row["source"] for row in load_manifest(data_dir)}
+
+    def source_of(path):
+        path = os.path.normpath(os.path.abspath(path))
+        if path in by_path:
+            return by_path[path]
+        cls = os.path.basename(os.path.dirname(path))
+        name = os.path.basename(path)
+        if cls == "notumor":
+            return "ixi" if name.startswith("IXI") else "brats-tumor-free"
+        return LEGACY_CLASS_SOURCE.get(cls, cls)
+    return source_of
+
+
+class SampleDataset(Dataset):
+    """(path, label) list -> (image tensor, label), like ImageFolder but from a list."""
+
+    def __init__(self, samples, transform):
+        self.samples = list(samples)
+        self.targets = [label for _, label in self.samples]
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, index):
+        path, label = self.samples[index]
+        return self.transform(Image.open(path).convert("RGB")), label
+
+
+def loaders_from_samples(train_samples, test_samples, class_names, batch_size=32,
+                         val_split=0.15, num_workers=2, augment_train=True):
+    """Same as get_dataloaders, but from explicit sample lists (used by loso.py)."""
+    train_idx, val_idx = split_by_patient(train_samples, val_split)
+    train_ds = SampleDataset([train_samples[i] for i in train_idx], get_transforms(augment_train))
+    val_ds = SampleDataset([train_samples[i] for i in val_idx], get_transforms(False))
+    test_ds = SampleDataset(test_samples, get_transforms(False))
+    for ds in (train_ds, val_ds, test_ds):
+        ds.class_to_idx = {c: i for i, c in enumerate(class_names)}
+    make = lambda ds, shuffle: DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
+                                          num_workers=num_workers)
+    return make(train_ds, True), make(val_ds, False), make(test_ds, False)
 
 
 def get_dataloaders(data_dir=DATA_DIR, batch_size=32, val_split=0.15, num_workers=2,
