@@ -52,40 +52,19 @@ def run_epoch(model, loader, criterion, optimizer, device, train: bool,
     return total_loss / total, correct / total
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="resnet50",
-                         choices=sorted(CLASSIFIER_ATTR),
-                         help="Which architecture to train")
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--head_epochs", type=int, default=5,
-                         help="Epochs with only the classifier head trainable")
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--data_dir", default="data_real")
-    args = parser.parse_args()
-
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-
-    train_loader, val_loader, _, class_names = get_dataloaders(
-        data_dir=args.data_dir, batch_size=args.batch_size
-    )
-    print(f"Classes: {class_names}")
-    print(f"Model: {args.model}")
-
+def train_model(model_name, train_loader, val_loader, class_names, head_epochs, epochs,
+                device, checkpoint_path, extra_checkpoint=None):
+    """Two-phase training (head only, then the whole network). Keeps the checkpoint
+    with the best validation accuracy at checkpoint_path. Returns the history."""
     criterion = nn.CrossEntropyLoss()
-    model = build_model(args.model, num_classes=len(class_names)).to(device)
-    head_module = getattr(model, CLASSIFIER_ATTR[args.model])
+    model = build_model(model_name, num_classes=len(class_names)).to(device)
+    head_module = getattr(model, CLASSIFIER_ATTR[model_name])
 
-    phases = [("head", args.head_epochs, 1e-3, True),
-              ("fine-tuning", args.epochs, 1e-5, False)]
+    phases = [("head", head_epochs, 1e-3, True),
+              ("fine-tuning", epochs, 1e-5, False)]
 
     history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
-    best_val_acc = 0.0
-    checkpoint_path = os.path.join(OUTPUT_DIR, f"{args.model}_best.pt")
-
+    best_val_acc = -1.0
     total_epochs = sum(phase[1] for phase in phases)
     epoch_number = 0
 
@@ -134,13 +113,43 @@ def main():
                 torch.save({
                     "model_state_dict": model.state_dict(),
                     "class_names": class_names,
-                    "model_name": args.model,
+                    "model_name": model_name,
                     "val_acc": val_acc,
+                    **(extra_checkpoint or {}),
                 }, checkpoint_path)
                 print(f"  -> saved new best checkpoint ({val_acc:.4f} val acc)")
 
     print(f"\nBest validation accuracy: {best_val_acc:.4f}")
     print(f"Checkpoint saved to {checkpoint_path}")
+    return history
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", default="resnet50",
+                         choices=sorted(CLASSIFIER_ATTR),
+                         help="Which architecture to train")
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--head_epochs", type=int, default=5,
+                         help="Epochs with only the classifier head trainable")
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--data_dir", default="data_real")
+    args = parser.parse_args()
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    train_loader, val_loader, _, class_names = get_dataloaders(
+        data_dir=args.data_dir, batch_size=args.batch_size
+    )
+    print(f"Classes: {class_names}")
+    print(f"Model: {args.model}")
+
+    checkpoint_path = os.path.join(OUTPUT_DIR, f"{args.model}_best.pt")
+    history = train_model(args.model, train_loader, val_loader, class_names,
+                          args.head_epochs, args.epochs, device, checkpoint_path)
 
     # Plot training curves
     fig, axes = plt.subplots(1, 2, figsize=(11, 4))

@@ -20,7 +20,7 @@ import torch
 from sklearn.metrics import (accuracy_score, classification_report,
                               confusion_matrix, precision_recall_fscore_support)
 
-from data_loader import get_dataloaders
+from data_loader import get_dataloaders, load_manifest, source_lookup
 from model import build_model, CLASSIFIER_ATTR
 
 OUTPUT_DIR = "outputs"
@@ -70,6 +70,7 @@ def main():
             all_labels.extend(labels.tolist())
 
     acc = accuracy_score(all_labels, all_preds)
+    paths = [path for path, _ in test_loader.dataset.samples]
     precision, recall, f1, _ = precision_recall_fscore_support(
         all_labels, all_preds, average="weighted", zero_division=0
     )
@@ -125,6 +126,19 @@ def main():
                     "support": class_support[index],
                 })
         print(f"Metrics CSV saved to {args.output_csv}")
+
+    # Per-source breakdown: a source the model does much better on than the others
+    # is a sign it recognises that dataset rather than the disease.
+    if load_manifest(args.data_dir):
+        source_of = source_lookup(args.data_dir)
+        by_source = {}
+        for path, label, pred in zip(paths, all_labels, all_preds):
+            key = (source_of(path), class_names[label])
+            hits, n = by_source.get(key, (0, 0))
+            by_source[key] = (hits + (label == pred), n + 1)
+        print("\nRecall by source (test set):")
+        for (source, cls), (hits, n) in sorted(by_source.items()):
+            print(f"  {source:<16} {cls:<12} {hits / n:6.1%}  (n={n})")
 
     # Confusion matrix
     cm = confusion_matrix(all_labels, all_preds)
